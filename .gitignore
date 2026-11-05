@@ -1,0 +1,59 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Firebase service account keys
+serviceAccountKey*.json
+*-firebase-adminsdk-*.json
+service-account*.json
+credentials*.json
+
+# Firebase local files
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+.runtimeconfig.json
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Packaging and build outputs
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test, coverage and tool caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+
+# Logs
+*.log
+logs/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
