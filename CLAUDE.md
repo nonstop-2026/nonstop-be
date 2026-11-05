@@ -144,7 +144,7 @@ users/{uid}/folders/{folderId}      name, order, createdAt
 ## 브랜치 전략 (GitHub Flow)
 
 - 최신 `main`에서 논리 작업 하나당 브랜치 하나를 따고, 이름은 `<type>/<short-description>`으로 쓴다. type은 Conventional Commits와 같다. 예: `feat/kakao-auth`. 커밋을 추천할 때 현재 브랜치가 `main`이면 브랜치 생성부터 안내한다.
-- PR은 작성자가 아닌 팀원 1명의 승인을 받은 뒤 merge commit으로 병합한다. 성격별로 나눈 커밋을 그대로 남기기 위해서다. 병합한 브랜치는 삭제한다.
+- PR은 리뷰 승인 없이 작성자가 직접 병합한다. 성격별로 나눈 커밋을 그대로 남기기 위해 merge commit을 쓴다. 병합한 브랜치는 삭제하지 않아도 된다.
 - `develop`, `release`, `hotfix` 브랜치는 두지 않는다. 긴급 수정도 `fix/` 브랜치와 PR을 거치며, `main`은 항상 배포 가능한 상태로 유지한다.
 
 ## 오픈 이슈
