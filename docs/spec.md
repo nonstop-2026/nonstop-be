@@ -66,11 +66,22 @@ P-02, P-07은 결번이다. 이 번호에 해당하는 내용은 현재 없다.
 - 철회된 논문은 카드를 비활성화하고, 개정판은 재생성 큐에 넣은 뒤 안내 배지용 상태값을 내려준다.
 - arXiv API 약관(2026-11-07 확인): 요청은 3초에 1회 이하, 동시 연결 1개이며 모든 기기를 합산해 적용한다. 값은 `ARXIV_REQUEST_INTERVAL_SECONDS`로 분리한다. e-print를 자체 서버에서 저장·제공하지 않고, arXiv의 보증을 받은 것처럼 표현하지 않으며, 원문은 초록 페이지로 연결한다. 약관은 바뀔 수 있으므로 관련 코드를 고치기 전에 다시 확인한다.
 
+온보딩 키워드 목록은 다음과 같다.
+
+| 분야 슬러그 | arXiv | 키워드 슬러그 |
+| --- | --- | --- |
+| ai | cs.AI | agents, reasoning, planning |
+| nlp | cs.CL | llm, rag, translation |
+| cv | cs.CV | image-generation, multimodal, 3d-vision |
+| hci | cs.HC | ux-research, xr, accessibility |
+| se | cs.SE | code-generation, software-testing, developer-tools |
+
 ### P-03 AI 생성물
 
 - 생성 결과를 표본 검수하고, 오류가 확인되면 즉시 비노출 처리한 뒤 재생성한다.
 - 카드 필드는 JSON 스키마 기반 구조화 출력으로 받아 파싱 실패를 줄인다.
 - 챗봇은 논문 범위 밖 질문, 의료 · 법률 · 투자 조언, 개인정보 요구에 응답하지 않는다.
+- Gemini는 논문당 한 번 호출로 세 읽기 수준 카드, `titleKo`, `tags`를 JSON으로 반환한다. `tags`는 키워드 목록 안에서 최대 3개만 받고 목록 밖 값은 버린다. `venue`는 생성하지 않는다.
 
 ### P-04 개인정보
 
