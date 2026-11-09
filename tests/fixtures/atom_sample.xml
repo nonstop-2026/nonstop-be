@@ -1,0 +1,44 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <id>https://arxiv.org/api/sample</id>
+  <title>arXiv Query: sample</title>
+  <updated>2026-11-09T00:00:00Z</updated>
+  <opensearch:itemsPerPage>2</opensearch:itemsPerPage>
+  <opensearch:totalResults>2</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <entry>
+    <id>http://arxiv.org/abs/2611.00001v2</id>
+    <title>A Sample Paper
+      With a  Wrapped Title</title>
+    <updated>2026-11-08T10:00:00Z</updated>
+    <link href="https://arxiv.org/abs/2611.00001v2" rel="alternate" type="text/html"/>
+    <link href="https://arxiv.org/pdf/2611.00001v2" rel="related" type="application/pdf" title="pdf"/>
+    <summary>We study a sample problem.
+  Our method improves accuracy by 12.5 points on 3 benchmarks.</summary>
+    <category term="cs.HC" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>
+    <published>2026-11-06T02:06:04Z</published>
+    <arxiv:primary_category term="cs.HC"/>
+    <arxiv:journal_ref>CHI 2026</arxiv:journal_ref>
+    <author>
+      <name>Ada Example</name>
+    </author>
+    <author>
+      <name>Bo Sample</name>
+    </author>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/hep-th/9901001v1</id>
+    <title>An Old Style Identifier</title>
+    <updated>1999-01-04T00:00:00Z</updated>
+    <link href="https://arxiv.org/abs/hep-th/9901001v1" rel="alternate" type="text/html"/>
+    <link href="https://arxiv.org/pdf/hep-th/9901001v1" rel="related" type="application/pdf" title="pdf"/>
+    <summary>An abstract without a journal reference.</summary>
+    <category term="hep-th" scheme="http://arxiv.org/schemas/atom"/>
+    <published>1999-01-04T00:00:00Z</published>
+    <arxiv:primary_category term="hep-th"/>
+    <author>
+      <name>Cy Old</name>
+    </author>
+  </entry>
+</feed>
