@@ -157,6 +157,14 @@ class ArxivClient:
         )
         return parse_atom(xml_text)
 
+    def by_ids(self, arxiv_ids: list[str]) -> list[ArxivPaper]:
+        if not arxiv_ids:
+            return []
+        xml_text = self._get(
+            ATOM_URL, {"id_list": ",".join(arxiv_ids), "max_results": len(arxiv_ids)}
+        )
+        return parse_atom(xml_text)
+
     def fetch_license(self, arxiv_id: str) -> str | None:
         try:
             xml_text = self._get(
