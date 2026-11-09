@@ -6,6 +6,7 @@ from google import genai
 from google.genai import errors, types
 from pydantic import ValidationError
 
+from app.cards.numbers import abstract_values, output_numbers
 from app.cards.prompts import LATEST_PROMPT_VERSION, get_prompt, v0_2
 from app.cards.schema import GeneratedPaperCards, clean_tags
 
@@ -21,14 +22,13 @@ BANNED_WORD_EXCEPTIONS = ("미해결",)
 LEVELS = ("easy", "basic", "expert")
 CARD_TEXT_FIELDS = ("oneLine", "whyImportant", "method", "dataset", "limitation")
 
-_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 _SENTENCE_END = re.compile(r"(?<=[.?!])\s+")
 _FORMAL_ENDING = re.compile(r"니다[.?!]?$")
 # A Korean numeral containing a magnitude (ten, hundred, ...) right before a unit, as in
 # "il-cheon gae" (one thousand items). Single-digit numerals are skipped because the
 # demonstrative "i" (this) followed by "gae" would match.
 _KOREAN_NUMERAL = re.compile(
-    r"(?<![가-힣])([일이삼사오육칠팔구]*[십백천만억][일이삼사오육칠팔구십백천만억]*)"
+    r"(?<![가-힣0-9,.])([일이삼사오육칠팔구]*[십백천만억][일이삼사오육칠팔구십백천만억]*)"
     r"\s?(개월|개|명|편|건|배|년|시간|분|초|회|장|종|가지|점|차|쌍|층|단계|퍼센트)"
 )
 _FORBIDDEN = re.compile(
@@ -36,8 +36,16 @@ _FORBIDDEN = re.compile(
 )
 
 
+# Gemini status codes that get exactly one retry. 429 is never retried.
+TRANSIENT_CODES = (503,)
+
+
 class QuotaExceeded(Exception):
     """Raised on HTTP 429 so the caller can stop without retrying."""
+
+    def __init__(self, message: str, api_calls: int = 1):
+        super().__init__(message)
+        self.api_calls = api_calls
 
 
 @dataclass
@@ -50,10 +58,8 @@ class GenerationResult:
     cards: dict | None = None
     error: str | None = None
     issues: dict[str, list[str]] = field(default_factory=dict)
-
-
-def _normalize_number(value: str) -> str:
-    return value.replace(",", "")
+    # Requests sent to Gemini for this result, including a transient retry.
+    api_calls: int = 1
 
 
 def output_texts(cards: GeneratedPaperCards) -> list[str]:
@@ -66,11 +72,16 @@ def output_texts(cards: GeneratedPaperCards) -> list[str]:
 
 
 def find_unsupported_numbers(texts: list[str], abstract: str) -> list[str]:
-    allowed = {_normalize_number(n) for n in _NUMBER.findall(abstract)}
+    """Numbers in the cards whose value never appears in the abstract.
+
+    The abstract may spell values as words ("six") or with K, M, B suffixes ("30M"),
+    and cards may use Korean magnitudes ("3,000만", "3천만").
+    """
+    allowed = abstract_values(abstract)
     found: list[str] = []
     for text in texts:
-        for number in _NUMBER.findall(text):
-            if _normalize_number(number) not in allowed and number not in found:
+        for number, value in output_numbers(text):
+            if value not in allowed and number not in found:
                 found.append(number)
     return found
 
@@ -217,28 +228,43 @@ class CardGenerator:
         if wait > 0:
             time.sleep(wait)
 
-    def generate(self, paper_id: str, title: str, abstract: str) -> GenerationResult:
+    def _request(self, title: str, abstract: str):
         self._wait()
-        started = time.monotonic()
         try:
-            response = self._client.models.generate_content(
+            return self._client.models.generate_content(
                 model=self.model,
                 contents=self._prompt.build_prompt(title, abstract),
                 config=self._config,
             )
-        except errors.APIError as exc:
-            if exc.code == 429:
-                raise QuotaExceeded(f"{self.model}: HTTP 429 {exc.status}") from None
-            return self._failure(
-                paper_id, started, f"API error {exc.code} {exc.status}"
-            )
         finally:
             self._last_call = time.monotonic()
+
+    def generate(self, paper_id: str, title: str, abstract: str) -> GenerationResult:
+        started = time.monotonic()
+        calls = 0
+        while True:
+            calls += 1
+            try:
+                response = self._request(title, abstract)
+                break
+            except errors.APIError as exc:
+                if exc.code == 429:
+                    raise QuotaExceeded(
+                        f"{self.model}: HTTP 429 {exc.status}", api_calls=calls
+                    ) from None
+                if exc.code in TRANSIENT_CODES and calls == 1:
+                    continue
+                return self._failure(
+                    paper_id, started, f"API error {exc.code} {exc.status}", calls
+                )
         try:
             cards = GeneratedPaperCards.model_validate_json(response.text or "")
         except ValidationError as exc:
             return self._failure(
-                paper_id, started, f"invalid response: {exc.error_count()} errors"
+                paper_id,
+                started,
+                f"invalid response: {exc.error_count()} errors",
+                calls,
             )
         kept, dropped = clean_tags(cards.tags)
         cards.tags = kept
@@ -252,9 +278,12 @@ class CardGenerator:
             issues=run_checks(
                 cards, abstract, dropped, why_sentences_for(self.prompt_version)
             ),
+            api_calls=calls,
         )
 
-    def _failure(self, paper_id: str, started: float, error: str) -> GenerationResult:
+    def _failure(
+        self, paper_id: str, started: float, error: str, api_calls: int
+    ) -> GenerationResult:
         return GenerationResult(
             paper_id=paper_id,
             model=self.model,
@@ -262,4 +291,5 @@ class CardGenerator:
             ok=False,
             elapsed_seconds=round(time.monotonic() - started, 2),
             error=error,
+            api_calls=api_calls,
         )
