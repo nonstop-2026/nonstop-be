@@ -1,4 +1,5 @@
-from google.api_core.exceptions import Conflict
+import pytest
+from google.api_core.exceptions import Conflict, DeadlineExceeded, ServiceUnavailable
 
 from app.cards.generate import GenerationResult
 from app.ingest.arxiv import ArxivPaper
@@ -191,3 +192,35 @@ def test_save_paper_skips_existing():
     assert save_paper(db, paper, review, "later") is False
     assert db.commits == 1
     assert db.docs["papers/2611.00001/cards/easy"]["generatedAt"] == "now"
+
+
+class FlakyBatch(FakeBatch):
+    """Applies the writes but reports a timeout, like a commit whose reply was lost."""
+
+    def commit(self):
+        super().commit()
+        raise DeadlineExceeded("deadline exceeded")
+
+
+def test_save_paper_counts_landed_commit_after_timeout_as_saved():
+    db = FakeDb()
+    db.batch = lambda: FlakyBatch(db) if db.commits == 0 else FakeBatch(db)
+    review = review_paper(sequence(make_result()))
+    assert save_paper(db, make_paper(), review, "now") is True
+    assert len(db.docs) == 4
+
+
+def test_save_paper_retries_once_then_raises():
+    db = FakeDb()
+
+    class DownBatch(FakeBatch):
+        def commit(self):
+            db.attempts += 1
+            raise ServiceUnavailable("unavailable")
+
+    db.attempts = 0
+    db.batch = lambda: DownBatch(db)
+    review = review_paper(sequence(make_result()))
+    with pytest.raises(ServiceUnavailable):
+        save_paper(db, make_paper(), review, "now")
+    assert db.attempts == 2

@@ -20,11 +20,11 @@ def test_select_by_primary_category_and_dedupe():
 def test_backfill_stops_at_call_limit():
     papers = [make_paper(f"2611.0000{i}") for i in range(5)]
     flagged = make_result(issues={"length": ["titleKo 41 chars"]})
-    state = run_backfill(papers, lambda paper: flagged, lambda p, r: True, max_calls=5)
+    state = run_backfill(papers, lambda paper: flagged, lambda p, r: True, max_calls=6)
     assert state.calls == 4
     assert len(state.processed) == 2
     assert len(state.remaining) == 3
-    assert state.stop_reason == "Gemini call limit 5 reached"
+    assert state.stop_reason == "Gemini call limit 6 reached"
 
 
 def test_backfill_stops_on_quota_error():
@@ -60,3 +60,19 @@ def test_backfill_stops_on_firestore_error():
     assert len(state.processed) == 1
     assert [p.paper_id for p in state.remaining] == ["2611.00001", "2611.00002"]
     assert "Firestore error on 2611.00001" in state.stop_reason
+
+
+def test_backfill_counts_transient_retries():
+    retried = make_result()
+    retried.api_calls = 2
+    state = run_backfill([make_paper()], lambda p: retried, lambda p, r: True, 140)
+    assert state.calls == 2
+
+
+def test_backfill_stops_when_hidden_exceeds_half_at_checkpoint():
+    papers = [make_paper(f"2611.000{i:02d}") for i in range(12)]
+    flagged = make_result(issues={"bannedWords": ["해결"]})
+    state = run_backfill(papers, lambda p: flagged, lambda p, r: True, 140)
+    assert len(state.processed) == 10
+    assert len(state.remaining) == 2
+    assert state.stop_reason == "Hidden ratio 100% after 10"
