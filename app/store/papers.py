@@ -10,7 +10,7 @@ from typing import Any
 
 import firebase_admin
 from firebase_admin import credentials, firestore
-from google.api_core.exceptions import Conflict
+from google.api_core.exceptions import Conflict, DeadlineExceeded, ServiceUnavailable
 
 from app.cards.generate import LEVELS, GenerationResult
 from app.ingest.arxiv import ArxivPaper
@@ -92,19 +92,39 @@ def paper_exists(db: Any, paper_id: str) -> bool:
     return db.collection(PAPERS).document(paper_id).get().exists
 
 
-def save_paper(db: Any, paper: ArxivPaper, review: Review, generated_at: Any) -> bool:
-    """Write the paper and its 3 cards in one batch. Returns False if it already exists."""
+def cards_complete(db: Any, paper_id: str) -> bool:
+    ref = db.collection(PAPERS).document(paper_id)
+    return all(ref.collection(CARDS).document(level).get().exists for level in LEVELS)
+
+
+def _create_batch(
+    db: Any, paper: ArxivPaper, review: Review, generated_at: Any
+) -> None:
     ref = db.collection(PAPERS).document(paper.paper_id)
     batch = db.batch()
     # create() fails on an existing document, so a rerun never overwrites or duplicates.
     batch.create(ref, paper_document(paper, review.result.cards, review.status))
     for level, data in card_documents(review.result, generated_at).items():
         batch.create(ref.collection(CARDS).document(level), data)
-    try:
-        batch.commit()
-    except Conflict:
-        return False
-    return True
+    batch.commit()
+
+
+def save_paper(db: Any, paper: ArxivPaper, review: Review, generated_at: Any) -> bool:
+    """Write the paper and its 3 cards in one batch. Returns False if it already exists.
+
+    A 503 or 504 is retried once. If the retry finds the paper already there, the first
+    commit landed, which counts as saved when all 3 cards exist.
+    """
+    for attempt in (1, 2):
+        try:
+            _create_batch(db, paper, review, generated_at)
+            return True
+        except Conflict:
+            return attempt == 2 and cards_complete(db, paper.paper_id)
+        except (ServiceUnavailable, DeadlineExceeded):
+            if attempt == 2:
+                raise
+    raise AssertionError("unreachable")
 
 
 def firestore_client(service_account_json: str, project_id: str) -> Any:

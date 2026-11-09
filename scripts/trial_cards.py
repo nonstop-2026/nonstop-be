@@ -91,7 +91,8 @@ def load_baseline(
 
 def run_generator(
     generator: CardGenerator, papers: list[ArxivPaper]
-) -> tuple[list[GenerationResult], str | None]:
+) -> tuple[list[GenerationResult], str | None, int]:
+    """Return results, the stop reason and the number of Gemini calls made."""
     results = []
     for paper in papers:
         try:
@@ -99,8 +100,8 @@ def run_generator(
                 generator.generate(paper.paper_id, paper.title, paper.abstract)
             )
         except QuotaExceeded as exc:
-            return results, str(exc)
-    return results, None
+            return results, str(exc), sum(r.api_calls for r in results) + exc.api_calls
+    return results, None, sum(r.api_calls for r in results)
 
 
 def cell(value: object) -> str:
@@ -267,9 +268,8 @@ def main() -> None:
         generator = CardGenerator(
             settings.gemini_api_key, job_model, args.gemini_interval, version
         )
-        done, stop_reason = run_generator(generator, papers)
-        # A quota error stops the loop after one more call that returned no result.
-        calls += len(done) + (1 if stop_reason else 0)
+        done, stop_reason, used = run_generator(generator, papers)
+        calls += used
         results[label] = {r.paper_id: r for r in done}
         write_json(out_dir / f"{safe_name(job_model)}.json", done)
         if stop_reason:

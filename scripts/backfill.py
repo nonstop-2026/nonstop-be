@@ -38,8 +38,10 @@ from app.store.papers import (
 )
 
 CANDIDATES_PER_CATEGORY = 100
-# One first attempt plus at most one regeneration.
-MAX_CALLS_PER_PAPER = 2
+# Two attempts (first plus one regeneration), each with at most one transient retry.
+MAX_CALLS_PER_PAPER = 4
+CHECKPOINT_PAPERS = 10
+MAX_HIDDEN_RATIO = 0.5
 WRITES_PER_PAPER = 1 + len(LEVELS)
 REPORT_PATH = Path("trial-output/backfill-report.md")
 
@@ -74,8 +76,13 @@ def run_backfill(
             break
 
         def counted(paper: ArxivPaper = paper) -> GenerationResult:
-            state.calls += 1
-            return generate(paper)
+            try:
+                result = generate(paper)
+            except QuotaExceeded as exc:
+                state.calls += exc.api_calls
+                raise
+            state.calls += result.api_calls
+            return result
 
         try:
             review = review_paper(counted)
@@ -103,6 +110,20 @@ def run_backfill(
             f"{paper.paper_id} {label} calls={state.calls}",
             flush=True,
         )
+        if len(state.processed) == CHECKPOINT_PAPERS:
+            hidden = sum(1 for p in state.processed if p.review.status == HIDDEN)
+            ratio = hidden / CHECKPOINT_PAPERS
+            print(
+                f"Checkpoint after {CHECKPOINT_PAPERS} papers: hidden {ratio:.0%}, "
+                f"{state.calls / CHECKPOINT_PAPERS:.2f} calls per paper",
+                flush=True,
+            )
+            if ratio > MAX_HIDDEN_RATIO:
+                state.stop_reason = (
+                    f"Hidden ratio {ratio:.0%} after {CHECKPOINT_PAPERS}"
+                )
+                state.remaining = papers[index + 1 :]
+                break
     return state
 
 
