@@ -4,7 +4,7 @@
 
 - **기준 문서:** 이 파일과 [docs/spec.md](docs/spec.md)(기능 명세, 비기능 요구사항, 구현 정책, 릴리스 계획). 기능이나 정책을 다룰 때는 `docs/spec.md`를 먼저 읽는다. 초기 초안인 `개발문서` v1.0은 기준 문서가 아니다.
 - **저장소 구성:** 백엔드와 프론트엔드는 별도 저장소다. 이 저장소는 백엔드(FastAPI, 수집 배치, Firebase Admin 연동)만 다룬다. 프론트엔드 화면 · 제스처 · UI 작업은 하지 않으며, 프론트엔드와의 계약(API 명세, 인증 방식)은 `openapi.yaml`로 관리한다.
-- **현재 상태:** 구현 코드가 없다. `openapi.yaml`도 아직 없다. 결정 기록은 [docs/decisions.md](docs/decisions.md)에 둔다.
+- **현재 상태:** 구현 코드가 없다. `openapi.yaml`은 v0.1(구현 전)이다. 결정 기록은 [docs/decisions.md](docs/decisions.md)에 둔다.
 
 ## 프로젝트 개요
 
@@ -94,8 +94,8 @@ flowchart TD
 
 ```
 papers/{paperId}
-  arxivId, version, title, authors, publishedAt, categories,
-  abstractUrl, pdfUrl, license, tags[], status
+  arxivId, version, title, titleKo, authors, publishedAt, categories,
+  primaryCategory, venue, abstractUrl, pdfUrl, license, tags[], status
 
 papers/{paperId}/cards/{level}      level = easy | basic | expert
   oneLine, whyImportant, keyPoints[], method, dataset, limitation,
@@ -107,11 +107,15 @@ papers/{paperId}/cards/{level}      level = easy | basic | expert
 - `paperId`는 버전을 뺀 arXiv ID이며, 구형 ID의 `/`는 `_`로 바꾼다 (예: `hep-th_9901001`). 버전은 `version` 필드에 둔다.
 - `status`는 `ready`, `hidden` 두 값만 쓴다.
 - Firestore 보안 규칙은 클라이언트 접근을 전면 차단한다 (`allow read, write: if false`). 모든 접근은 백엔드의 Admin SDK로만 한다.
+- `titleKo`는 Gemini가 만든 한국어 제목이며 세 읽기 수준이 공유한다.
+- `venue`는 arXiv `journal_ref`에서만 가져오고 없으면 null이다. AI로 생성하지 않는다.
+- `tags[]`에는 `openapi.yaml`의 `KeywordSlug` 값만 최대 3개 저장한다.
 
 ## API 엔드포인트 (FastAPI)
 
 - 전체 OpenAPI 3.1 명세는 `openapi.yaml`로 관리하고 Swagger Editor에서 검증한다. 엔드포인트를 바꾸면 이 파일도 같이 갱신하고, 프론트엔드와의 계약이므로 사용자에게 알린다.
 - 웹 클라이언트와 API의 출처가 다르면 CORS 설정이 필요하다. 허용 출처는 와일드카드 없이 설정값으로 명시한다. 허용 출처는 Firebase Hosting 기본 도메인(`.web.app`, `.firebaseapp.com`)과 개발용 `http://localhost:5173`이다.
+- 요청 파라미터 형식, 응답 필드, 오류 코드는 `openapi.yaml`이 기준이다. `interests`, `exclude` 값은 로그에 남기지 않는다.
 
 | 메서드 | 경로 | 설명 |
 | --- | --- | --- |

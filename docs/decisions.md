@@ -134,3 +134,10 @@
 - 근거: 개인정보를 수집하지 않기 위해
 - 확인한 출처: 해당 없음
 - 반영 위치: CLAUDE.md 오픈 이슈
+
+## 2026-11-08 API 계약 v0.1 확정
+
+- 결정: 프론트 임시 이름(`interests`, `exclude`, `today`, `todayPaper`, `recommendations`, `isFallback`)을 그대로 확정. 키워드 15개 고정. `titleKo`, `primaryCategory` 추가. `venue`는 `journal_ref`에서만.
+- 근거: 프론트 목 데이터의 이름을 유지해 재작업을 줄이고, 공모전 일정 안에 연동하기 위해. 학회명은 AI가 추측하면 틀릴 수 있어 메타데이터에서만 가져온다.
+- 확인한 출처: 해당 없음
+- 반영 위치: openapi.yaml, CLAUDE.md 데이터 모델, docs/spec.md P-01·P-03

@@ -1,0 +1,536 @@
+openapi: 3.1.0
+info:
+  title: NonStop API
+  version: 0.1.0
+  summary: Read-only paper card API for the NonStop contest demo.
+  description: |
+    Contract between the NonStop backend (FastAPI) and the web client.
+
+    - No authentication. Every endpoint is public and read-only.
+    - The server never stores user data. Personalization inputs (`interests`, `exclude`)
+      are used only to compute the response and must not be written to logs.
+    - Every card field is AI-generated. Clients always label cards as "AI 요약".
+    - Errors use RFC 9457 Problem Details (`application/problem+json`) with an extra `code` field.
+      `title` and `detail` are user-facing Korean strings.
+servers:
+  - url: http://localhost:8000
+    description: Local development
+tags:
+  - name: onboarding
+  - name: home
+  - name: feed
+  - name: papers
+
+paths:
+  /v1/onboarding/cards:
+    get:
+      tags: [onboarding]
+      operationId: getOnboardingCards
+      summary: Ten paper cards for the onboarding swipe step.
+      description: |
+        Returns 10 `ready` papers at the `basic` level. When `keywords` is given,
+        papers tagged with those keywords are preferred. Fewer than 10 items may be
+        returned only when the collection itself has fewer papers.
+      parameters:
+        - $ref: '#/components/parameters/KeywordsQuery'
+      responses:
+        '200':
+          description: Onboarding cards.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaperList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/onboarding/weights:
+    post:
+      tags: [onboarding]
+      operationId: computeOnboardingWeights
+      summary: Compute interest weights from selected keywords and swipe reactions.
+      description: |
+        Stateless calculation. Nothing is stored on the server.
+        Returns 400 with code `TOO_FEW_KEYWORDS` when fewer than 3 keywords are selected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardingWeightsRequest'
+      responses:
+        '200':
+          description: Interest weights, highest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingWeightsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/home:
+    get:
+      tags: [home]
+      operationId: getHome
+      summary: Today's paper, recommendations and the server date in Korea.
+      parameters:
+        - $ref: '#/components/parameters/InterestsQuery'
+        - $ref: '#/components/parameters/ExcludeQuery'
+        - $ref: '#/components/parameters/LevelQuery'
+      responses:
+        '200':
+          description: Home sections.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/feed:
+    get:
+      tags: [feed]
+      operationId: getFeed
+      summary: Personalized vertical feed with cursor pagination.
+      parameters:
+        - $ref: '#/components/parameters/InterestsQuery'
+        - $ref: '#/components/parameters/ExcludeQuery'
+        - $ref: '#/components/parameters/LevelQuery'
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque value from the previous response's `nextCursor`. Omit for the first page.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 10
+      responses:
+        '200':
+          description: One page of the feed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/papers:
+    get:
+      tags: [papers]
+      operationId: getPapersByIds
+      summary: Several papers at once, for the saved list.
+      description: |
+        Unknown or `hidden` ids are silently left out. The response keeps the order of `ids`.
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: Comma-separated paper ids, 1 to 50.
+          schema:
+            type: string
+            minLength: 1
+          example: 2607.01234,hep-th_9901001
+        - $ref: '#/components/parameters/LevelQuery'
+      responses:
+        '200':
+          description: Requested papers that exist and are `ready`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaperList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/papers/{paperId}:
+    get:
+      tags: [papers]
+      operationId: getPaper
+      summary: Paper detail with the card for one reading level.
+      parameters:
+        - name: paperId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/PaperId'
+        - $ref: '#/components/parameters/LevelQuery'
+      responses:
+        '200':
+          description: Paper detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaperDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+components:
+  parameters:
+    InterestsQuery:
+      name: interests
+      in: query
+      required: false
+      description: |
+        Comma-separated `keyword:weight` pairs, 1 to 15 pairs. Keywords must be `KeywordSlug`
+        values and weights are numbers from 0 to 1 with up to two decimals.
+        When omitted, results are not personalized. Must not be logged.
+      schema:
+        type: string
+        pattern: '^[a-z0-9-]+:(0(\.[0-9]{1,2})?|1(\.0{1,2})?)(,[a-z0-9-]+:(0(\.[0-9]{1,2})?|1(\.0{1,2})?))*$'
+      example: hci:0.62,llm:0.48
+    ExcludeQuery:
+      name: exclude
+      in: query
+      required: false
+      description: Comma-separated paper ids the client has already read, up to 50. Must not be logged.
+      schema:
+        type: string
+      example: 2607.01234,2607.04567
+    KeywordsQuery:
+      name: keywords
+      in: query
+      required: false
+      description: Comma-separated `KeywordSlug` values selected in onboarding.
+      schema:
+        type: string
+      example: llm,agents,ux-research
+    LevelQuery:
+      name: level
+      in: query
+      required: false
+      description: Reading level of the returned card fields.
+      schema:
+        $ref: '#/components/schemas/Level'
+
+  responses:
+    BadRequest:
+      description: Invalid parameter or body.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: 요청을 처리할 수 없어요
+            status: 400
+            detail: 관심 키워드를 3개 이상 골라 주세요.
+            code: TOO_FEW_KEYWORDS
+    NotFound:
+      description: Paper does not exist or is hidden.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: 논문을 찾을 수 없어요
+            status: 404
+            code: PAPER_NOT_FOUND
+    InternalError:
+      description: Unexpected server error.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: 잠시 문제가 생겼어요
+            status: 500
+            code: INTERNAL_ERROR
+    ServiceUnavailable:
+      description: A dependency is unavailable, including the Firestore free quota being exhausted.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: 지금은 논문을 불러올 수 없어요
+            status: 503
+            code: SERVICE_UNAVAILABLE
+
+  schemas:
+    Level:
+      type: string
+      enum: [easy, basic, expert]
+      default: basic
+      description: easy = 쉽게, basic = 기본, expert = 전문.
+
+    FieldSlug:
+      type: string
+      description: |
+        Onboarding field. Maps one-to-one to an arXiv category:
+        ai = cs.AI, nlp = cs.CL, cv = cs.CV, hci = cs.HC, se = cs.SE.
+      enum: [ai, nlp, cv, hci, se]
+
+    KeywordSlug:
+      type: string
+      description: |
+        Fixed onboarding keyword list. Korean labels live in the client.
+        Gemini assigns paper tags only from this list.
+        ai: agents, reasoning, planning
+        nlp: llm, rag, translation
+        cv: image-generation, multimodal, 3d-vision
+        hci: ux-research, xr, accessibility
+        se: code-generation, software-testing, developer-tools
+      enum:
+        - agents
+        - reasoning
+        - planning
+        - llm
+        - rag
+        - translation
+        - image-generation
+        - multimodal
+        - 3d-vision
+        - ux-research
+        - xr
+        - accessibility
+        - code-generation
+        - software-testing
+        - developer-tools
+
+    PaperId:
+      type: string
+      description: arXiv id without version. A `/` in old-style ids is replaced by `_`.
+      pattern: '^[A-Za-z0-9._-]+$'
+      examples: ['2607.01234', 'hep-th_9901001']
+
+    PaperSummary:
+      type: object
+      description: Card-sized paper data used by home, feed, onboarding and the saved list.
+      required:
+        [paperId, arxivId, version, title, titleKo, primaryCategory, venue, publishedAt, authors, tags, level, oneLine]
+      properties:
+        paperId:
+          $ref: '#/components/schemas/PaperId'
+        arxivId:
+          type: string
+          description: Original arXiv id without version, as shown to users.
+          example: '2607.01234'
+        version:
+          type: integer
+          minimum: 1
+          example: 1
+        title:
+          type: string
+          description: Original English title from arXiv. Always shown under `titleKo`.
+        titleKo:
+          type: string
+          description: AI-generated Korean title. One per paper, shared by all levels.
+        primaryCategory:
+          type: string
+          description: arXiv primary category code.
+          example: cs.HC
+        venue:
+          type: [string, 'null']
+          description: |
+            Venue from arXiv metadata (`journal_ref`) only. Never generated by AI.
+            Null when arXiv has no value; clients then show only the year of `publishedAt`.
+          example: CHI 2026
+        publishedAt:
+          type: string
+          format: date
+          description: First submission date on arXiv.
+        authors:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: Full author list in arXiv order. Clients shorten it for display.
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/KeywordSlug'
+          maxItems: 3
+          description: AI-assigned keywords from the fixed list. May be empty.
+        level:
+          $ref: '#/components/schemas/Level'
+        oneLine:
+          type: string
+          description: AI-generated one-line summary at `level`. Shown with the highlighter.
+
+    Card:
+      type: object
+      description: AI-generated card body for one reading level.
+      required: [oneLine, whyImportant, keyPoints, method, dataset, limitation]
+      properties:
+        oneLine:
+          type: string
+        whyImportant:
+          type: string
+        keyPoints:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 5
+        method:
+          type: [string, 'null']
+        dataset:
+          type: [string, 'null']
+        limitation:
+          type: [string, 'null']
+
+    PaperDetail:
+      allOf:
+        - $ref: '#/components/schemas/PaperSummary'
+        - type: object
+          required: [abstractUrl, pdfUrl, license, card]
+          properties:
+            abstractUrl:
+              type: string
+              format: uri
+              description: arXiv abstract page. Clients open it in a new tab.
+            pdfUrl:
+              type: string
+              format: uri
+            license:
+              type: [string, 'null']
+              description: License URL from arXiv metadata.
+            card:
+              $ref: '#/components/schemas/Card'
+
+    PaperList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaperSummary'
+
+    HomeResponse:
+      type: object
+      required: [today, todayPaper, recommendations, isFallback]
+      properties:
+        today:
+          type: string
+          format: date
+          description: Current date in Asia/Seoul. Clients use it for the attendance streak.
+        todayPaper:
+          oneOf:
+            - $ref: '#/components/schemas/PaperSummary'
+            - type: 'null'
+          description: Paper of the day. Null only when no unread paper is left.
+        recommendations:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/PaperSummary'
+        isFallback:
+          type: boolean
+          description: True when today's batch is empty and papers from the last 3 days are used.
+
+    FeedResponse:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaperSummary'
+        nextCursor:
+          type: [string, 'null']
+          description: Null on the last page.
+
+    Reaction:
+      type: string
+      enum: [like, dislike, skip]
+
+    OnboardingWeightsRequest:
+      type: object
+      required: [keywords, swipes]
+      properties:
+        keywords:
+          type: array
+          description: Keywords chosen on the interest step. At least 3.
+          items:
+            $ref: '#/components/schemas/KeywordSlug'
+          uniqueItems: true
+          maxItems: 15
+        swipes:
+          type: array
+          description: Reactions from the swipe step. Undone swipes are not sent.
+          maxItems: 10
+          items:
+            type: object
+            required: [paperId, reaction]
+            properties:
+              paperId:
+                $ref: '#/components/schemas/PaperId'
+              reaction:
+                $ref: '#/components/schemas/Reaction'
+
+    OnboardingWeightsResponse:
+      type: object
+      required: [interests]
+      properties:
+        interests:
+          type: array
+          description: Highest weight first. Clients store it and send it back as `interests`.
+          items:
+            type: object
+            required: [keyword, weight]
+            properties:
+              keyword:
+                $ref: '#/components/schemas/KeywordSlug'
+              weight:
+                type: number
+                minimum: 0
+                maximum: 1
+
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details with an extra `code`.
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          default: about:blank
+        title:
+          type: string
+          description: Short Korean message for users.
+        status:
+          type: integer
+        detail:
+          type: string
+          description: Optional Korean explanation for users.
+        instance:
+          type: string
+        code:
+          type: string
+          enum:
+            - INVALID_PARAMETER
+            - TOO_FEW_KEYWORDS
+            - PAPER_NOT_FOUND
+            - INTERNAL_ERROR
+            - SERVICE_UNAVAILABLE
