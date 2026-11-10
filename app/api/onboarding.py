@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.api.errors import ApiError, invalid_parameter
 from app.cards.schema import KEYWORD_SLUGS
-from app.catalog import CatalogUnavailable, Paper
+from app.catalog import Paper
 from app.ingest.arxiv import CATEGORIES
 from app.ranking import parse_keywords
 
@@ -101,9 +101,5 @@ def onboarding_weights(request: Request, body: WeightsRequest) -> dict:
         raise invalid_parameter("keywords")
     if len(body.keywords) < MIN_KEYWORDS:
         raise ApiError(400, "TOO_FEW_KEYWORDS")
-    try:
-        papers = {p.paper_id: p for p in request.app.state.catalog.papers()}
-    except CatalogUnavailable:
-        # openapi.yaml lists no 503 for this endpoint, so an outage maps to 500.
-        raise ApiError(500, "INTERNAL_ERROR") from None
+    papers = {p.paper_id: p for p in request.app.state.catalog.papers()}
     return {"interests": compute_weights(body.keywords, body.swipes, papers)}

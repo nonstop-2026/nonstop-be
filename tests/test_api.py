@@ -171,7 +171,7 @@ def test_paper_detail_schema_and_not_found(client):
     )
 
 
-def test_firestore_outage_returns_503_and_500_for_weights():
+def test_firestore_outage_returns_503_everywhere():
     def broken():
         raise ServiceUnavailable("down")
 
@@ -179,7 +179,7 @@ def test_firestore_outage_returns_503_and_500_for_weights():
     assert_problem(outage.get("/v1/home"), 503, "SERVICE_UNAVAILABLE")
     assert_problem(outage.get("/v1/feed"), 503, "SERVICE_UNAVAILABLE")
     weights = outage.post("/v1/onboarding/weights", json=LIKE_AND_DISLIKE)
-    assert_problem(weights, 500, "INTERNAL_ERROR")
+    assert_problem(weights, 503, "SERVICE_UNAVAILABLE")
     assert "down" not in weights.text
 
 
@@ -244,3 +244,9 @@ def test_onboarding_spreads_preferred_papers_across_fields():
     assert "cs.CL" in categories[:5]
     assert all(categories.count(c) <= 3 for c in set(categories))
     assert len(categories) == 10
+
+
+def test_openapi_documents_503_for_every_endpoint():
+    for path, methods in SPEC["paths"].items():
+        for method, operation in methods.items():
+            assert "503" in operation["responses"], (method, path)
