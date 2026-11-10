@@ -7,7 +7,7 @@ from google.genai import errors, types
 from pydantic import ValidationError
 
 from app.cards.numbers import abstract_values, output_numbers
-from app.cards.prompts import LATEST_PROMPT_VERSION, get_prompt, v0_2
+from app.cards.prompts import LATEST_PROMPT_VERSION, get_prompt
 from app.cards.schema import GeneratedPaperCards, clean_tags
 
 DEFAULT_INTERVAL_SECONDS = 4.5
@@ -16,9 +16,15 @@ TITLE_KO_MAX_CHARS = 40
 ONE_LINE_MAX_CHARS = 60
 # Default for prompts that do not define WHY_IMPORTANT_SENTENCES (v0.1).
 WHY_IMPORTANT_SENTENCES = (2, 3)
-BANNED_WORDS = v0_2.BANNED_WORDS
-# Words that contain a banned word but are neutral, such as "unresolved".
-BANNED_WORD_EXCEPTIONS = ("미해결",)
+# Overclaiming words. "proof" is excluded because proofs are often the topic itself.
+BANNED_WORDS = ("해결", "입증", "극대화", "혁신", "획기적", "완벽")
+# Neutral forms removed before the check: "unresolved" and purpose forms ("in order to solve").
+_BANNED_WORD_EXCEPTIONS = re.compile(r"미해결|해결(?:하기 위|하려|하고자)")
+# A sentence that attributes the claim to the authors ("report", "claim", "reveal",
+# "present") is not an overclaim.
+ATTRIBUTION_MARKERS = ("보고", "주장", "밝혀", "밝혔", "제시")
+# Recorded in results but never a reason to hide a paper.
+NON_BLOCKING_CHECKS = ("droppedTags",)
 LEVELS = ("easy", "basic", "expert")
 CARD_TEXT_FIELDS = ("oneLine", "whyImportant", "method", "dataset", "limitation")
 
@@ -129,12 +135,15 @@ def find_korean_numerals(texts: list[str]) -> list[str]:
 
 
 def find_banned_words(texts: list[str]) -> list[str]:
-    cleaned = []
+    """Banned words used as the card's own claim, judged sentence by sentence."""
+    found: list[str] = []
     for text in texts:
-        for allowed in BANNED_WORD_EXCEPTIONS:
-            text = text.replace(allowed, "")
-        cleaned.append(text)
-    return [word for word in BANNED_WORDS if any(word in text for text in cleaned)]
+        for sentence in _SENTENCE_END.split(text.strip()):
+            sentence = _BANNED_WORD_EXCEPTIONS.sub("", sentence)
+            if any(marker in sentence for marker in ATTRIBUTION_MARKERS):
+                continue
+            found += [w for w in BANNED_WORDS if w in sentence and w not in found]
+    return [word for word in BANNED_WORDS if word in found]
 
 
 def count_sentences(text: str) -> int:
@@ -175,10 +184,12 @@ def run_checks(
     abstract: str,
     dropped_tags: list[str],
     why_sentences: tuple[int, int] = WHY_IMPORTANT_SENTENCES,
+    title: str = "",
 ) -> dict[str, list[str]]:
     texts = output_texts(cards)
     return {
-        "unsupportedNumbers": find_unsupported_numbers(texts, abstract),
+        # Numbers from the paper title count as supported too.
+        "unsupportedNumbers": find_unsupported_numbers(texts, f"{title}\n{abstract}"),
         "length": find_length_issues(cards, why_sentences),
         "forbiddenChars": find_forbidden_chars(texts),
         "droppedTags": dropped_tags,
@@ -186,6 +197,10 @@ def run_checks(
         "koreanNumerals": find_korean_numerals(texts),
         "bannedWords": find_banned_words(texts),
     }
+
+
+def has_blocking_issues(issues: dict[str, list[str]]) -> bool:
+    return any(v for k, v in issues.items() if k not in NON_BLOCKING_CHECKS)
 
 
 def why_sentences_for(prompt_version: str) -> tuple[int, int]:
@@ -276,7 +291,11 @@ class CardGenerator:
             elapsed_seconds=round(self._last_call - started, 2),
             cards=cards.model_dump(),
             issues=run_checks(
-                cards, abstract, dropped, why_sentences_for(self.prompt_version)
+                cards,
+                abstract,
+                dropped,
+                why_sentences_for(self.prompt_version),
+                title=title,
             ),
             api_calls=calls,
         )
