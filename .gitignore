@@ -57,3 +57,5 @@ logs/
 .idea/
 *.swp
 *.swo
+# Card generation trial output
+trial-output/
