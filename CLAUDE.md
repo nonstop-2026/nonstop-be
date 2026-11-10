@@ -4,7 +4,7 @@
 
 - **기준 문서:** 이 파일과 [docs/spec.md](docs/spec.md)(기능 명세, 비기능 요구사항, 구현 정책, 릴리스 계획). 기능이나 정책을 다룰 때는 `docs/spec.md`를 먼저 읽는다. 초기 초안인 `개발문서` v1.0은 기준 문서가 아니다.
 - **저장소 구성:** 백엔드와 프론트엔드는 별도 저장소다. 이 저장소는 백엔드(FastAPI, 수집 배치, Firebase Admin 연동)만 다룬다. 프론트엔드 화면 · 제스처 · UI 작업은 하지 않으며, 프론트엔드와의 계약(API 명세, 인증 방식)은 `openapi.yaml`로 관리한다.
-- **현재 상태:** 구현 코드가 없다. `openapi.yaml`은 v0.1(구현 전)이다. 결정 기록은 [docs/decisions.md](docs/decisions.md)에 둔다.
+- **현재 상태:** `openapi.yaml` 기준 API 6개 구현 완료. Firestore에 데모용 논문 120편(정상 79편) 저장 완료. 결정 기록은 [docs/decisions.md](docs/decisions.md)에 둔다.
 
 ## 프로젝트 개요
 
@@ -127,6 +127,23 @@ papers/{paperId}/cards/{level}      level = easy | basic | expert
 | GET | /v1/papers | 저장함 표시용, `ids` 파라미터로 여러 논문 한 번에 조회 |
 
 - 공통 오류 응답은 RFC 9457 Problem Details(`application/problem+json`)에 `code` 확장 필드를 더한 형식으로 한다.
+
+## 실행 명령
+
+- 로컬 서버: `uv run uvicorn app.main:app --reload --no-access-log`
+- 검사: `uv run ruff check .`, `uv run ruff format --check .`, `uv run pytest`
+- 스크립트 (backfill, recheck, regenerate는 `--dry-run`으로 먼저 확인한다)
+  - `uv run python -m scripts.check_firestore`: Admin SDK 연결 확인 (확인용 문서 쓰기 · 읽기 · 삭제)
+  - `uv run python -m scripts.backfill --model <모델>`: 분야별 최신 논문을 골라 카드 생성 후 저장. 이미 저장된 논문은 건너뛴다
+  - `uv run python -m scripts.recheck`: 저장된 카드에 현재 점검기를 다시 돌려 status 갱신. Gemini를 부르지 않는다
+  - `uv run python -m scripts.regenerate --model <모델>`: hidden 논문을 최신 프롬프트로 다시 생성하고, 통과하면 ready로 바꾼다
+
+## 배포 (Render)
+
+- 빌드 명령 `uv sync --locked --no-dev`, 시작 명령 `uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port $PORT --no-access-log`
+- 지역 Singapore, 무료 인스턴스, 브랜치 `main`
+- 환경 변수: `PYTHON_VERSION`, `APP_ENV`, `FIREBASE_PROJECT_ID`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `CORS_ALLOWED_ORIGINS`. API 서버는 Gemini를 부르지 않으므로 Gemini 키는 넣지 않는다.
+- 서버가 깨어난 뒤 첫 요청에서 Firestore의 ready 논문과 카드를 한 번 읽어 메모리에 둔다. 백필 · 재생성 · 재점검으로 데이터를 바꾼 뒤에는 서버를 다시 시작해야 반영된다.
 
 ## 브랜치 전략 (GitHub Flow)
 
