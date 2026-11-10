@@ -77,14 +77,15 @@ def load_baseline(
             break
     else:
         sys.exit(f"No saved {version} results for {model} in {OUTPUT_DIR}")
-    abstracts = {p.paper_id: p.abstract for p in papers}
+    by_id = {p.paper_id: p for p in papers}
     why_sentences = why_sentences_for(version)
     for result in saved:
-        if result.ok and result.paper_id in abstracts:
+        if result.ok and result.paper_id in by_id:
             cards = GeneratedPaperCards.model_validate(result.cards)
             dropped = result.issues.get("droppedTags", [])
+            paper = by_id[result.paper_id]
             result.issues = run_checks(
-                cards, abstracts[result.paper_id], dropped, why_sentences
+                cards, paper.abstract, dropped, why_sentences, title=paper.title
             )
     return {r.paper_id: r for r in saved}
 

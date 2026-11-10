@@ -12,7 +12,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from google.api_core.exceptions import Conflict, DeadlineExceeded, ServiceUnavailable
 
-from app.cards.generate import LEVELS, GenerationResult
+from app.cards.generate import LEVELS, GenerationResult, has_blocking_issues
 from app.ingest.arxiv import ArxivPaper
 
 PAPERS = "papers"
@@ -71,7 +71,7 @@ class Review:
 
 
 def has_issues(result: GenerationResult) -> bool:
-    return any(result.issues.values())
+    return has_blocking_issues(result.issues)
 
 
 def review_paper(generate: Callable[[], GenerationResult]) -> Review:
@@ -125,6 +125,34 @@ def save_paper(db: Any, paper: ArxivPaper, review: Review, generated_at: Any) ->
             if attempt == 2:
                 raise
     raise AssertionError("unreachable")
+
+
+def replace_cards(
+    db: Any, paper_id: str, result: GenerationResult, generated_at: Any
+) -> None:
+    """Overwrite the 3 cards and mark the paper ready, all in one batch.
+
+    The writes are idempotent, so a 503 or 504 is simply retried once.
+    """
+    ref = db.collection(PAPERS).document(paper_id)
+    for attempt in (1, 2):
+        batch = db.batch()
+        batch.update(
+            ref,
+            {
+                "titleKo": result.cards["titleKo"],
+                "tags": result.cards["tags"],
+                "status": READY,
+            },
+        )
+        for level, data in card_documents(result, generated_at).items():
+            batch.set(ref.collection(CARDS).document(level), data)
+        try:
+            batch.commit()
+            return
+        except (ServiceUnavailable, DeadlineExceeded):
+            if attempt == 2:
+                raise
 
 
 def firestore_client(service_account_json: str, project_id: str) -> Any:

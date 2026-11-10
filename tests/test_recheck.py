@@ -11,7 +11,7 @@ STORED = {
     "promptVersion": "v0.3",
     "generatedAt": "now",
 }
-PAPER = {"titleKo": "제목", "tags": ["llm"], "status": "hidden"}
+PAPER = {"title": "A Title", "titleKo": "제목", "tags": ["llm"], "status": "hidden"}
 ABSTRACT = "We compare six models using a 30M-parameter encoder."
 
 

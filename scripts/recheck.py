@@ -7,7 +7,7 @@ Gemini is never called and no document is deleted.
 import argparse
 from typing import Any
 
-from app.cards.generate import run_checks, why_sentences_for
+from app.cards.generate import has_blocking_issues, run_checks, why_sentences_for
 from app.cards.schema import GeneratedPaperCards
 from app.config import load_settings
 from app.ingest.arxiv import ArxivClient
@@ -26,9 +26,13 @@ def recheck_paper(
     )
     # Stored tags were already filtered, so there is nothing left to drop.
     issues = run_checks(
-        generated, abstract, [], why_sentences_for(cards["basic"]["promptVersion"])
+        generated,
+        abstract,
+        [],
+        why_sentences_for(cards["basic"]["promptVersion"]),
+        title=paper["title"],
     )
-    return (HIDDEN if any(issues.values()) else READY), issues
+    return (HIDDEN if has_blocking_issues(issues) else READY), issues
 
 
 def main() -> None:
