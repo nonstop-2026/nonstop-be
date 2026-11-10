@@ -9,6 +9,7 @@ from app.store.papers import (
     card_documents,
     paper_document,
     paper_exists,
+    replace_cards,
     review_paper,
     save_paper,
 )
@@ -46,12 +47,22 @@ class FakeBatch:
         self.ops = []
 
     def create(self, ref, data):
-        self.ops.append((ref.path, data))
+        self.ops.append(("create", ref.path, data))
+
+    def set(self, ref, data):
+        self.ops.append(("set", ref.path, data))
+
+    def update(self, ref, data):
+        self.ops.append(("update", ref.path, data))
 
     def commit(self):
-        if any(path in self.db.docs for path, _ in self.ops):
+        if any(k == "create" and path in self.db.docs for k, path, _ in self.ops):
             raise Conflict("document already exists")
-        self.db.docs.update(self.ops)
+        for kind, path, data in self.ops:
+            if kind == "update":
+                self.db.docs[path] = self.db.docs[path] | data
+            else:
+                self.db.docs[path] = data
         self.db.commits += 1
 
 
@@ -224,3 +235,30 @@ def test_save_paper_retries_once_then_raises():
     with pytest.raises(ServiceUnavailable):
         save_paper(db, make_paper(), review, "now")
     assert db.attempts == 2
+
+
+def test_review_ready_when_only_tags_were_dropped():
+    review = review_paper(sequence(make_result(issues={"droppedTags": ["ll5"]})))
+    assert review.status == READY
+
+
+def test_replace_cards_overwrites_cards_and_marks_ready():
+    db = FakeDb()
+    paper = make_paper()
+    hidden = review_paper(
+        sequence(
+            make_result(issues={"length": ["x"]}), make_result(issues={"length": ["x"]})
+        )
+    )
+    save_paper(db, paper, hidden, "old")
+    fresh = make_result()
+    fresh.prompt_version = "v0.4"
+    fresh.cards = fresh.cards | {"titleKo": "new title"}
+    replace_cards(db, paper.paper_id, fresh, "new")
+    doc = db.docs["papers/2611.00001"]
+    assert doc["status"] == READY
+    assert doc["titleKo"] == "new title"
+    assert doc["arxivId"] == "2611.00001"
+    assert db.docs["papers/2611.00001/cards/expert"]["promptVersion"] == "v0.4"
+    assert db.docs["papers/2611.00001/cards/expert"]["generatedAt"] == "new"
+    assert db.commits == 2
