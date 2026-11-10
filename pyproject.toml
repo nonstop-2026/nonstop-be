@@ -3,15 +3,22 @@ name = "nonstop-be"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "fastapi>=0.162.2",
     "firebase-admin>=7.7.0",
     "google-genai>=3.0.0",
     "httpx>=0.28.1",
     "pydantic>=2.14.3",
     "python-dotenv>=1.2.4",
+    "uvicorn>=0.54.0",
 ]
 
 [dependency-groups]
-dev = ["pytest", "ruff"]
+dev = [
+    "jsonschema>=4.26.0",
+    "pytest",
+    "pyyaml>=6.0.3",
+    "ruff",
+]
 
 [tool.ruff]
 target-version = "py312"

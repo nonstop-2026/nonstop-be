@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NonStop API
-  version: 0.1.0
+  version: 0.1.1
   summary: Read-only paper card API for the NonStop contest demo.
   description: |
     Contract between the NonStop backend (FastAPI) and the web client.
@@ -72,6 +72,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /v1/home:
     get:

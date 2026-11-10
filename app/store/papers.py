@@ -156,6 +156,10 @@ def replace_cards(
 
 
 def firestore_client(service_account_json: str, project_id: str) -> Any:
-    cert = credentials.Certificate(json.loads(service_account_json))
-    app = firebase_admin.initialize_app(cert, {"projectId": project_id})
+    try:
+        # Reuse the default app so a second call in the same process does not fail.
+        app = firebase_admin.get_app()
+    except ValueError:
+        cert = credentials.Certificate(json.loads(service_account_json))
+        app = firebase_admin.initialize_app(cert, {"projectId": project_id})
     return firestore.client(app)
