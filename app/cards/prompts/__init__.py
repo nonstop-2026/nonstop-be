@@ -2,10 +2,10 @@
 
 from types import ModuleType
 
-from app.cards.prompts import v0_1, v0_2, v0_3
+from app.cards.prompts import v0_1, v0_2, v0_3, v0_4
 
-PROMPTS: dict[str, ModuleType] = {m.PROMPT_VERSION: m for m in (v0_1, v0_2, v0_3)}
-LATEST_PROMPT_VERSION = v0_3.PROMPT_VERSION
+PROMPTS: dict[str, ModuleType] = {m.PROMPT_VERSION: m for m in (v0_1, v0_2, v0_3, v0_4)}
+LATEST_PROMPT_VERSION = v0_4.PROMPT_VERSION
 
 
 def get_prompt(version: str) -> ModuleType:
